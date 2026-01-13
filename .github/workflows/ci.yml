@@ -12,20 +12,36 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: Build and Test
-    runs-on: macos-14
+    name: Build and Test (Swift ${{ matrix.swift-version }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        xcode: ['16.0']
+        include:
+          - swift-version: 6.0
+            runner: macos-14
+          - swift-version: 6.0
+            runner: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Select Xcode ${{ matrix.xcode }}
-        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16'
 
-      - name: Show Swift Version
-        run: swift --version
+      - name: Install Swift ${{ matrix.swift-version }}
+        uses: SwiftyLab/setup-swift@v1
+        with:
+          swift-version: ${{ matrix.swift-version }}
+
+      - name: Show versions
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Clean build directory
+        run: rm -rf .build
 
       - name: Build
         run: swift build -v
@@ -34,52 +50,85 @@ jobs:
         run: swift test -v
 
   build-ios:
-    name: Build for iOS
-    runs-on: macos-14
+    name: iOS (Swift ${{ matrix.swift-version }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - swift-version: 6.0
+            runner: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.0.app
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16'
 
-      - name: Build for iOS
-        run: |
-          xcodebuild build \
-            -scheme WebClient \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.0' \
-            -skipPackagePluginValidation
+      - name: Install Swift ${{ matrix.swift-version }}
+        uses: SwiftyLab/setup-swift@v1
+        with:
+          swift-version: ${{ matrix.swift-version }}
+
+      - name: Clean build directory
+        run: rm -rf .build
+
+      - name: Build
+        run: swift build -v
 
   build-watchos:
-    name: Build for watchOS
-    runs-on: macos-14
+    name: watchOS (Swift ${{ matrix.swift-version }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - swift-version: 6.0
+            runner: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.0.app
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16'
 
-      - name: Build for watchOS
-        run: |
-          xcodebuild build \
-            -scheme WebClient \
-            -destination 'platform=watchOS Simulator,name=Apple Watch Series 10 (46mm),OS=11.0' \
-            -skipPackagePluginValidation
+      - name: Install Swift ${{ matrix.swift-version }}
+        uses: SwiftyLab/setup-swift@v1
+        with:
+          swift-version: ${{ matrix.swift-version }}
+
+      - name: Clean build directory
+        run: rm -rf .build
+
+      - name: Build
+        run: swift build -v
 
   build-tvos:
-    name: Build for tvOS
-    runs-on: macos-14
+    name: tvOS (Swift ${{ matrix.swift-version }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - swift-version: 6.0
+            runner: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.0.app
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16'
 
-      - name: Build for tvOS
-        run: |
-          xcodebuild build \
-            -scheme WebClient \
-            -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=18.0' \
-            -skipPackagePluginValidation
+      - name: Install Swift ${{ matrix.swift-version }}
+        uses: SwiftyLab/setup-swift@v1
+        with:
+          swift-version: ${{ matrix.swift-version }}
+
+      - name: Clean build directory
+        run: rm -rf .build
+
+      - name: Build
+        run: swift build -v
