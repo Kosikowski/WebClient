@@ -1,1 +1,84 @@
-/.build
+# Swift Package Manager
+/.build/
+/Packages
+Package.resolved
+*.xcodeproj
+xcuserdata/
+
+# Xcode
+DerivedData/
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+*.xccheckout
+*.xcscmblueprint
+*.xcworkspace
+!*.xcworkspace/contents.xcworkspacedata
+!*.xcworkspace/xcshareddata
+**/xcshareddata/WorkspaceSettings.xcsettings
+
+# Build artifacts
+build/
+*.o
+*.swiftmodule
+*.swiftsourceinfo
+*.swiftdoc
+
+# Code coverage
+*.gcov
+*.gcda
+*.gcno
+.coverage/
+codecov.yml
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Temporary files
+*.log
+*.tmp
+*.temp
+*.swp
+*~
+
+# Secrets and environment
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.cer
+
+# CocoaPods (if used alongside SPM)
+Pods/
+Podfile.lock
+
+# Carthage (if used alongside SPM)
+Carthage/Build/
+Carthage/Checkouts/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Documentation
+docs/.build/
+.swiftpm/

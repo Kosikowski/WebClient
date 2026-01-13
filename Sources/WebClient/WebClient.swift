@@ -44,7 +44,7 @@ public actor WebClient: EndpointInvoking {
     public let configuration: WebClientConfiguration
 
     /// The URL session used for requests.
-    private let session: URLSession
+    let session: URLSession
 
     // MARK: - Initialization
 
