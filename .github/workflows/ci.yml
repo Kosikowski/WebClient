@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: macos-14
+    strategy:
+      matrix:
+        xcode: ['16.0']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode ${{ matrix.xcode }}
+        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
+
+      - name: Show Swift Version
+        run: swift --version
+
+      - name: Build
+        run: swift build -v
+
+      - name: Run Tests
+        run: swift test -v
+
+  build-ios:
+    name: Build for iOS
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app
+
+      - name: Build for iOS
+        run: |
+          xcodebuild build \
+            -scheme WebClient \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.0' \
+            -skipPackagePluginValidation
+
+  build-watchos:
+    name: Build for watchOS
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app
+
+      - name: Build for watchOS
+        run: |
+          xcodebuild build \
+            -scheme WebClient \
+            -destination 'platform=watchOS Simulator,name=Apple Watch Series 10 (46mm),OS=11.0' \
+            -skipPackagePluginValidation
+
+  build-tvos:
+    name: Build for tvOS
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app
+
+      - name: Build for tvOS
+        run: |
+          xcodebuild build \
+            -scheme WebClient \
+            -destination 'platform=tvOS Simulator,name=Apple TV 4K (3rd generation),OS=18.0' \
+            -skipPackagePluginValidation
