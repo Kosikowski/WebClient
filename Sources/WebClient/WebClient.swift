@@ -46,17 +46,71 @@ public actor WebClient: EndpointInvoking {
     /// The URL session used for requests.
     let session: URLSession
 
+    /// The session delegate for certificate pinning (retained to prevent deallocation).
+    private let sessionDelegate: (any URLSessionDelegate)?
+
     // MARK: - Initialization
 
     /// Creates a new WebClient with the given configuration.
     /// - Parameter configuration: The client configuration.
     public init(configuration: WebClientConfiguration) {
         self.configuration = configuration
+        sessionDelegate = nil
 
         let sessionConfig = URLSessionConfiguration.default
         sessionConfig.timeoutIntervalForRequest = Double(configuration.timeout.components.seconds)
         sessionConfig.timeoutIntervalForResource = Double(configuration.resourceTimeout.components.seconds)
         session = URLSession(configuration: sessionConfig)
+    }
+
+    /// Creates a new WebClient with certificate pinning support.
+    ///
+    /// When certificate pinning is enabled, all connections will validate the server's
+    /// certificate against the pinned values before allowing communication.
+    ///
+    /// - Parameters:
+    ///   - configuration: The client configuration.
+    ///   - certificatePinning: The certificate pinning configuration.
+    ///   - onPinningFailure: Optional callback when pinning validation fails.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let pinning = CertificatePinning(
+    ///     pins: [
+    ///         CertificatePin(
+    ///             host: "api.example.com",
+    ///             publicKeyHashes: ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]
+    ///         )
+    ///     ]
+    /// )
+    ///
+    /// let client = WebClient(
+    ///     configuration: config,
+    ///     certificatePinning: pinning
+    /// ) { host, reason in
+    ///     print("Pinning failed for \(host): \(reason)")
+    /// }
+    /// ```
+    public init(
+        configuration: WebClientConfiguration,
+        certificatePinning: CertificatePinning,
+        onPinningFailure: (@Sendable (String, String) -> Void)? = nil
+    ) {
+        self.configuration = configuration
+
+        let delegate = PinningSessionDelegate(
+            pinning: certificatePinning,
+            onPinningFailure: onPinningFailure
+        )
+        sessionDelegate = delegate
+
+        let sessionConfig = URLSessionConfiguration.default
+        sessionConfig.timeoutIntervalForRequest = Double(configuration.timeout.components.seconds)
+        sessionConfig.timeoutIntervalForResource = Double(configuration.resourceTimeout.components.seconds)
+
+        // Create session with delegate for certificate pinning
+        // Note: delegateQueue is nil to use a serial operation queue created by the session
+        session = URLSession(configuration: sessionConfig, delegate: delegate, delegateQueue: nil)
     }
 
     // MARK: - Public API
