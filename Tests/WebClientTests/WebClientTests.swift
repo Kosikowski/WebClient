@@ -718,4 +718,343 @@ struct WebClientTests {
         let request = endpoint.urlRequest(relativeTo: baseURL)
         #expect(request?.url?.absoluteString == "https://api.example.com/search/hello%20world")
     }
+
+    // MARK: - Rate Limiter Tests
+
+    @Test("RateLimiter token bucket initialization")
+    func rateLimiterInit() async {
+        let limiter = RateLimiter(tokensPerSecond: 10, maxTokens: 20)
+
+        let currentTokens = await limiter.currentTokens
+        #expect(currentTokens == 20)
+    }
+
+    @Test("RateLimiter requests per minute initialization")
+    func rateLimiterRequestsPerMinute() async {
+        let limiter = RateLimiter(requestsPerMinute: 60, burstSize: 10)
+
+        let currentTokens = await limiter.currentTokens
+        #expect(currentTokens == 10)
+    }
+
+    @Test("RateLimiter tryAcquire consumes tokens")
+    func rateLimiterTryAcquire() async {
+        let limiter = RateLimiter(tokensPerSecond: 10, maxTokens: 5)
+
+        // Should succeed - we have 5 tokens
+        let success1 = await limiter.tryAcquire()
+        #expect(success1 == true)
+
+        let success2 = await limiter.tryAcquire()
+        #expect(success2 == true)
+
+        // After consuming some tokens, count should decrease
+        let remaining = await limiter.currentTokens
+        #expect(remaining < 5)
+    }
+
+    @Test("RateLimiter tryAcquire fails when no tokens")
+    func rateLimiterTryAcquireNoTokens() async {
+        let limiter = RateLimiter(tokensPerSecond: 1, maxTokens: 2)
+
+        // Consume all tokens
+        _ = await limiter.tryAcquire()
+        _ = await limiter.tryAcquire()
+
+        // Should fail - no tokens left
+        let success = await limiter.tryAcquire()
+        #expect(success == false)
+    }
+
+    @Test("RateLimiter acquire waits for tokens")
+    func rateLimiterAcquireWaits() async throws {
+        let limiter = RateLimiter(tokensPerSecond: 100, maxTokens: 1)
+
+        // Consume the only token
+        _ = await limiter.tryAcquire()
+
+        // This should wait and then succeed
+        let startTime = ContinuousClock.now
+        try await limiter.acquire()
+        let elapsed = ContinuousClock.now - startTime
+
+        // Should have waited at least a few milliseconds
+        #expect(elapsed >= .milliseconds(5))
+    }
+
+    @Test("RateLimiter estimated wait time")
+    func rateLimiterEstimatedWaitTime() async {
+        let limiter = RateLimiter(tokensPerSecond: 10, maxTokens: 1)
+
+        // Initially should be zero (we have a token)
+        let initialWait = await limiter.estimatedWaitTime()
+        #expect(initialWait == .zero)
+
+        // Consume the token
+        _ = await limiter.tryAcquire()
+
+        // Now should have a wait time
+        let waitTime = await limiter.estimatedWaitTime()
+        #expect(waitTime > .zero)
+    }
+
+    @Test("RateLimiter reset")
+    func rateLimiterReset() async {
+        let limiter = RateLimiter(tokensPerSecond: 10, maxTokens: 5)
+
+        // Consume all tokens
+        for _ in 0 ..< 5 {
+            _ = await limiter.tryAcquire()
+        }
+
+        let emptyTokens = await limiter.currentTokens
+        #expect(emptyTokens < 1)
+
+        // Reset
+        await limiter.reset()
+
+        let fullTokens = await limiter.currentTokens
+        #expect(fullTokens == 5)
+    }
+
+    @Test("ScopedRateLimiter path matching")
+    func scopedRateLimiterPathMatching() async throws {
+        let searchLimiter = RateLimiter(tokensPerSecond: 1, maxTokens: 1)
+        let defaultLimiter = RateLimiter(tokensPerSecond: 100, maxTokens: 100)
+
+        let scopedLimiter = ScopedRateLimiter(
+            defaultLimiter: defaultLimiter,
+            scopedLimiters: ["/api/search": searchLimiter]
+        )
+
+        // Should use search limiter (strict)
+        let searchSuccess1 = await scopedLimiter.tryAcquire(for: "/api/search")
+        #expect(searchSuccess1 == true)
+
+        let searchSuccess2 = await scopedLimiter.tryAcquire(for: "/api/search")
+        #expect(searchSuccess2 == false) // Rate limited
+
+        // Should use default limiter (more lenient)
+        let otherSuccess = await scopedLimiter.tryAcquire(for: "/api/users")
+        #expect(otherSuccess == true)
+    }
+
+    // MARK: - Rate Limit Interceptor Tests
+
+    @Test("RateLimitInterceptor initialization")
+    func rateLimitInterceptorInit() {
+        let limiter = RateLimiter(requestsPerMinute: 60)
+        let interceptor = RateLimitInterceptor(rateLimiter: limiter)
+
+        #expect(interceptor is RequestInterceptor)
+    }
+
+    @Test("RateLimitInterceptor with scoped limiter")
+    func rateLimitInterceptorScoped() {
+        let scopedLimiter = ScopedRateLimiter(
+            defaultLimiter: RateLimiter(requestsPerMinute: 60),
+            scopedLimiters: ["/search": RateLimiter(requestsPerMinute: 10)]
+        )
+        let interceptor = RateLimitInterceptor(scopedRateLimiter: scopedLimiter)
+
+        #expect(interceptor is RequestInterceptor)
+    }
+
+    @Test("RateLimitResponseInterceptor initialization")
+    func rateLimitResponseInterceptorInit() {
+        let interceptor = RateLimitResponseInterceptor(maxRetryAfter: .seconds(30))
+        #expect(interceptor is ResponseInterceptor)
+    }
+
+    @Test("RateLimitedError creation")
+    func rateLimitedErrorCreation() {
+        let error = RateLimitedError(
+            retryAfter: .seconds(60),
+            remaining: 0,
+            resetTime: Date()
+        )
+
+        #expect(error.retryAfter == .seconds(60))
+        #expect(error.remaining == 0)
+        #expect(error.resetTime != nil)
+    }
+
+    // MARK: - Certificate Pinning Tests
+
+    @Test("CertificatePin host matching exact")
+    func certificatePinHostMatchingExact() {
+        let pin = CertificatePin(host: "api.example.com", publicKeyHashes: ["hash1"])
+
+        #expect(pin.matches(host: "api.example.com") == true)
+        #expect(pin.matches(host: "API.EXAMPLE.COM") == true) // Case insensitive
+        #expect(pin.matches(host: "other.example.com") == false)
+        #expect(pin.matches(host: "example.com") == false)
+    }
+
+    @Test("CertificatePin host matching wildcard")
+    func certificatePinHostMatchingWildcard() {
+        let pin = CertificatePin(host: "*.example.com", publicKeyHashes: ["hash1"])
+
+        #expect(pin.matches(host: "api.example.com") == true)
+        #expect(pin.matches(host: "www.example.com") == true)
+        #expect(pin.matches(host: "example.com") == false)
+        #expect(pin.matches(host: "sub.api.example.com") == false) // No nested subdomains
+    }
+
+    @Test("CertificatePin host matching with subdomains")
+    func certificatePinHostMatchingSubdomains() {
+        let pin = CertificatePin(
+            host: "example.com",
+            publicKeyHashes: ["hash1"],
+            includeSubdomains: true
+        )
+
+        #expect(pin.matches(host: "example.com") == true)
+        #expect(pin.matches(host: "api.example.com") == true)
+        #expect(pin.matches(host: "sub.api.example.com") == true)
+        #expect(pin.matches(host: "other.com") == false)
+    }
+
+    @Test("CertificatePinning configuration")
+    func certificatePinningConfiguration() {
+        let pinning = CertificatePinning(
+            pins: [
+                CertificatePin(host: "api.example.com", publicKeyHashes: ["hash1", "hash2"]),
+                CertificatePin(host: "cdn.example.com", certificateHashes: ["cert1"]),
+            ],
+            allowUnpinnedHosts: false,
+            validateChain: true
+        )
+
+        #expect(pinning.pins.count == 2)
+        #expect(pinning.allowUnpinnedHosts == false)
+        #expect(pinning.validateChain == true)
+    }
+
+    @Test("CertificatePinning pin lookup")
+    func certificatePinningPinLookup() {
+        let pinning = CertificatePinning(pins: [
+            CertificatePin(host: "api.example.com", publicKeyHashes: ["hash1"]),
+            CertificatePin(host: "cdn.example.com", publicKeyHashes: ["hash2"]),
+        ])
+
+        let apiPin = pinning.pin(for: "api.example.com")
+        #expect(apiPin != nil)
+        #expect(apiPin?.publicKeyHashes == ["hash1"])
+
+        let cdnPin = pinning.pin(for: "cdn.example.com")
+        #expect(cdnPin != nil)
+        #expect(cdnPin?.publicKeyHashes == ["hash2"])
+
+        let unknownPin = pinning.pin(for: "unknown.example.com")
+        #expect(unknownPin == nil)
+    }
+
+    @Test("CertificatePinning defaults")
+    func certificatePinningDefaults() {
+        let pinning = CertificatePinning(pins: [])
+
+        #expect(pinning.allowUnpinnedHosts == true)
+        #expect(pinning.validateChain == false)
+    }
+
+    @Test("CertificatePinningError creation")
+    func certificatePinningErrorCreation() {
+        let error = CertificatePinningError(
+            host: "api.example.com",
+            reason: "Certificate mismatch"
+        )
+
+        #expect(error.host == "api.example.com")
+        #expect(error.reason == "Certificate mismatch")
+        #expect(error.errorDescription?.contains("api.example.com") == true)
+    }
+
+    @Test("PinningSessionDelegate initialization")
+    func pinningSessionDelegateInit() {
+        let pinning = CertificatePinning(pins: [
+            CertificatePin(host: "api.example.com", publicKeyHashes: ["hash1"]),
+        ])
+
+        let delegate = PinningSessionDelegate(pinning: pinning) { _, _ in
+            // Callback for pinning failures
+        }
+
+        // Verify delegate is created successfully
+        #expect(delegate is URLSessionDelegate)
+    }
+
+    @Test("PinningTaskDelegate initialization")
+    func pinningTaskDelegateInit() {
+        let pinning = CertificatePinning(pins: [])
+        let delegate = PinningTaskDelegate(pinning: pinning)
+
+        #expect(delegate is URLSessionTaskDelegate)
+    }
+
+    // MARK: - WebClient with Certificate Pinning Tests
+
+    @Test("WebClient initialization with certificate pinning")
+    func webClientWithCertificatePinning() async {
+        let config = WebClientConfiguration(
+            baseURL: URL(string: "https://api.example.com")!
+        )
+
+        let pinning = CertificatePinning(pins: [
+            CertificatePin(
+                host: "api.example.com",
+                publicKeyHashes: ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="]
+            ),
+        ])
+
+        let client = WebClient(
+            configuration: config,
+            certificatePinning: pinning
+        ) { _, _ in
+            // Callback for pinning failures
+        }
+
+        let clientConfig = await client.configuration
+        #expect(clientConfig.baseURL.absoluteString == "https://api.example.com")
+    }
+
+    @Test("CertificatePin public key hash initializer")
+    func certificatePinPublicKeyHashInit() {
+        let pin = CertificatePin(
+            host: "example.com",
+            publicKeyHashes: ["hash1", "hash2"],
+            includeSubdomains: true
+        )
+
+        #expect(pin.hostPattern == "example.com")
+        #expect(pin.publicKeyHashes == ["hash1", "hash2"])
+        #expect(pin.certificateHashes.isEmpty)
+        #expect(pin.includeSubdomains == true)
+    }
+
+    @Test("CertificatePin certificate hash initializer")
+    func certificatePinCertificateHashInit() {
+        let pin = CertificatePin(
+            host: "example.com",
+            certificateHashes: ["cert1", "cert2"],
+            includeSubdomains: false
+        )
+
+        #expect(pin.hostPattern == "example.com")
+        #expect(pin.publicKeyHashes.isEmpty)
+        #expect(pin.certificateHashes == ["cert1", "cert2"])
+        #expect(pin.includeSubdomains == false)
+    }
+
+    @Test("CertificatePin combined initializer")
+    func certificatePinCombinedInit() {
+        let pin = CertificatePin(
+            host: "example.com",
+            publicKeyHashes: ["key1"],
+            certificateHashes: ["cert1"]
+        )
+
+        #expect(pin.publicKeyHashes == ["key1"])
+        #expect(pin.certificateHashes == ["cert1"])
+    }
 }
