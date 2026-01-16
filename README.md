@@ -1,3 +1,5 @@
+[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2FKosikowski%2FWebClient%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/Kosikowski/WebClient)
+[![](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2FKosikowski%2FWebClient%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/Kosikowski/WebClient)
 # WebClient
 
 A modern, type-safe HTTP client for Swift with protocol-based endpoint definitions, automatic retries, response caching, and full Swift 6 concurrency support.
