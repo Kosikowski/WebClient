@@ -202,10 +202,13 @@ struct ResumableDownloadTests {
     func progressStreamYieldsUpdates() async {
         let download = ResumableDownload<TestError>(destination: URL(filePath: "/tmp/test.txt"))
 
+        // Get the progress stream first (inside actor context)
+        let progressStream = await download.progressUpdates
+
         // Start collecting progress in a task
         let collectTask = Task {
             var updates: [TransferProgress] = []
-            for await progress in download.progressUpdates {
+            for await progress in progressStream {
                 updates.append(progress)
                 if updates.count >= 3 {
                     break
@@ -230,10 +233,13 @@ struct ResumableDownloadTests {
     func progressStreamFinishesOnCompletion() async {
         let download = ResumableDownload<TestError>(destination: URL(filePath: "/tmp/test.txt"))
 
+        // Get the progress stream first (inside actor context)
+        let progressStream = await download.progressUpdates
+
         // Start collecting progress
         let collectTask = Task {
             var count = 0
-            for await _ in download.progressUpdates {
+            for await _ in progressStream {
                 count += 1
             }
             return count
@@ -251,10 +257,13 @@ struct ResumableDownloadTests {
     func progressStreamFinishesOnCancellation() async {
         let download = ResumableDownload<TestError>(destination: URL(filePath: "/tmp/test.txt"))
 
+        // Get the progress stream first (inside actor context)
+        let progressStream = await download.progressUpdates
+
         // Start collecting progress
         let collectTask = Task {
             var count = 0
-            for await _ in download.progressUpdates {
+            for await _ in progressStream {
                 count += 1
             }
             return count
