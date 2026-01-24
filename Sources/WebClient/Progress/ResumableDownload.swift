@@ -81,6 +81,49 @@ public actor ResumableDownload<Failure: Sendable & Error>: Sendable {
         progressContinuation = continuation
     }
 
+    /// Creates a pre-completed download for testing purposes.
+    ///
+    /// This factory method creates a `ResumableDownload` that is already in the completed state,
+    /// useful for unit testing without making real network requests.
+    ///
+    /// - Parameters:
+    ///   - url: The URL to return as the download result.
+    /// - Returns: A `ResumableDownload` in the completed state.
+    public static func completed(with url: URL) async -> ResumableDownload<Failure> {
+        let download = ResumableDownload<Failure>(destination: url)
+        await download.setCompleted(url)
+        return download
+    }
+
+    /// Creates a pre-failed download for testing purposes.
+    ///
+    /// This factory method creates a `ResumableDownload` that is already in the failed state,
+    /// useful for unit testing error handling without making real network requests.
+    ///
+    /// - Parameters:
+    ///   - error: The error to throw when awaiting the result.
+    ///   - destination: The destination URL (not used since download failed).
+    /// - Returns: A `ResumableDownload` in the failed state.
+    public static func failed(with error: any Error & Sendable, destination: URL) async -> ResumableDownload<Failure> {
+        let download = ResumableDownload<Failure>(destination: destination)
+        await download.setFailed(error)
+        return download
+    }
+
+    /// Internal helper for setting completed state (for testing factory methods).
+    private func setCompleted(_ url: URL) {
+        state = .completed(url)
+        progressContinuation?.finish()
+        progressContinuation = nil
+    }
+
+    /// Internal helper for setting failed state (for testing factory methods).
+    private func setFailed(_ error: any Error & Sendable) {
+        state = .failed(error)
+        progressContinuation?.finish()
+        progressContinuation = nil
+    }
+
     /// Sets the download task for this download.
     func setDownloadTask(_ task: URLSessionDownloadTask) {
         downloadTask = task
