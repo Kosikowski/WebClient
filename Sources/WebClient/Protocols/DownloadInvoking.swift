@@ -82,4 +82,4 @@ public protocol DownloadInvoking: Sendable {
 ///     }
 /// }
 /// ```
-public typealias WebClientProtocol = EndpointInvoking & DownloadInvoking
+public typealias WebClientProtocol = DownloadInvoking & EndpointInvoking

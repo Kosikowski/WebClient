@@ -208,7 +208,7 @@ public actor MockWebClient: EndpointInvoking, DownloadInvoking {
 
     public func download<E: DownloadEndpoint>(
         _ endpoint: E,
-        to destination: URL,
+        to _: URL,
         progressDelegate: (any ProgressDelegate)?
     ) async throws -> FileDownloadResult {
         let key = downloadEndpointKey(for: type(of: endpoint))
@@ -246,8 +246,8 @@ public actor MockWebClient: EndpointInvoking, DownloadInvoking {
 
     public func resumableDownload<E: DownloadEndpoint>(
         _ endpoint: E,
-        to destination: URL,
-        resumeData: Data?
+        to _: URL,
+        resumeData _: Data?
     ) async throws -> ResumableDownload<E.Failure> where E.Failure: Error {
         let key = downloadEndpointKey(for: type(of: endpoint))
 
