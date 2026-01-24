@@ -39,7 +39,7 @@ import Foundation
 ///     }
 /// }
 /// ```
-public actor WebClient: EndpointInvoking {
+public actor WebClient: EndpointInvoking, DownloadInvoking {
     /// The configuration for this client.
     public let configuration: WebClientConfiguration
 

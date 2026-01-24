@@ -47,12 +47,18 @@ import Foundation
 ///     }
 /// }
 /// ```
-public actor MockWebClient: EndpointInvoking {
+public actor MockWebClient: EndpointInvoking, DownloadInvoking {
     /// Storage for stubbed responses, keyed by endpoint type name.
     private var stubs: [String: AnySendable] = [:]
 
     /// Storage for stubbed errors, keyed by endpoint type name.
     private var errors: [String: any Error] = [:]
+
+    /// Storage for stubbed file download results, keyed by endpoint type name.
+    private var downloadStubs: [String: FileDownloadResult] = [:]
+
+    /// Storage for stubbed resumable downloads, keyed by endpoint type name.
+    private var resumableDownloadStubs: [String: URL] = [:]
 
     /// Call counts for each endpoint type.
     private var calls: [String: Int] = [:]
@@ -93,10 +99,55 @@ public actor MockWebClient: EndpointInvoking {
         stubs[key] = nil
     }
 
+    /// Stubs a file download result for an endpoint type.
+    ///
+    /// When `download` is called with an endpoint of the given type,
+    /// it will return this result instead of making a network request.
+    ///
+    /// - Parameters:
+    ///   - endpointType: The endpoint type to stub.
+    ///   - result: The file download result to return.
+    public func stubDownload<E: DownloadEndpoint>(_ endpointType: E.Type, result: FileDownloadResult) {
+        let key = downloadEndpointKey(for: endpointType)
+        downloadStubs[key] = result
+        errors[key] = nil
+    }
+
+    /// Stubs a resumable download result for an endpoint type.
+    ///
+    /// When `resumableDownload` is called with an endpoint of the given type,
+    /// it will return a mock that immediately completes with the given URL.
+    ///
+    /// - Parameters:
+    ///   - endpointType: The endpoint type to stub.
+    ///   - resultURL: The URL to return as the download result.
+    public func stubResumableDownload<E: DownloadEndpoint>(_ endpointType: E.Type, resultURL: URL) {
+        let key = downloadEndpointKey(for: endpointType)
+        resumableDownloadStubs[key] = resultURL
+        errors[key] = nil
+    }
+
+    /// Stubs an error for a download endpoint type.
+    ///
+    /// When `download` or `resumableDownload` is called with an endpoint of the given type,
+    /// it will throw this error instead of making a network request.
+    ///
+    /// - Parameters:
+    ///   - endpointType: The endpoint type to stub.
+    ///   - error: The error to throw.
+    public func stubDownloadError<E: DownloadEndpoint>(_ endpointType: E.Type, error: any Error) {
+        let key = downloadEndpointKey(for: endpointType)
+        errors[key] = error
+        downloadStubs[key] = nil
+        resumableDownloadStubs[key] = nil
+    }
+
     /// Removes all stubs and recorded calls.
     public func reset() {
         stubs.removeAll()
         errors.removeAll()
+        downloadStubs.removeAll()
+        resumableDownloadStubs.removeAll()
         calls.removeAll()
         capturedEndpoints.removeAll()
     }
@@ -153,9 +204,88 @@ public actor MockWebClient: EndpointInvoking {
         return response
     }
 
+    // MARK: - DownloadInvoking
+
+    public func download<E: DownloadEndpoint>(
+        _ endpoint: E,
+        to _: URL,
+        progressDelegate: (any ProgressDelegate)?
+    ) async throws -> FileDownloadResult {
+        let key = downloadEndpointKey(for: type(of: endpoint))
+
+        // Record the call
+        calls[key, default: 0] += 1
+
+        // Capture the endpoint for later verification
+        if capturedEndpoints[key] == nil {
+            capturedEndpoints[key] = []
+        }
+        capturedEndpoints[key]?.append(AnySendable(endpoint))
+
+        // Check for stubbed error first
+        if let error = errors[key] {
+            await progressDelegate?.didFail(with: error)
+            throw error
+        }
+
+        // Check for stubbed download result
+        guard let result = downloadStubs[key] else {
+            fatalError(
+                """
+                MockWebClient: No download stub registered for endpoint type '\(key)'.
+                Call `stubDownload(\(key).self, result: ...)` before downloading with this endpoint.
+                """
+            )
+        }
+
+        // Simulate progress completion
+        await progressDelegate?.didComplete()
+
+        return result
+    }
+
+    public func resumableDownload<E: DownloadEndpoint>(
+        _ endpoint: E,
+        to _: URL,
+        resumeData _: Data?
+    ) async throws -> ResumableDownload<E.Failure> where E.Failure: Error {
+        let key = downloadEndpointKey(for: type(of: endpoint))
+
+        // Record the call
+        calls[key, default: 0] += 1
+
+        // Capture the endpoint for later verification
+        if capturedEndpoints[key] == nil {
+            capturedEndpoints[key] = []
+        }
+        capturedEndpoints[key]?.append(AnySendable(endpoint))
+
+        // Check for stubbed error first
+        if let error = errors[key] {
+            throw error
+        }
+
+        // Check for stubbed result URL
+        guard let resultURL = resumableDownloadStubs[key] else {
+            fatalError(
+                """
+                MockWebClient: No resumable download stub registered for endpoint type '\(key)'.
+                Call `stubResumableDownload(\(key).self, resultURL: ...)` before using this endpoint.
+                """
+            )
+        }
+
+        // Create a pre-completed ResumableDownload
+        return await ResumableDownload<E.Failure>.completed(with: resultURL)
+    }
+
     // MARK: - Private
 
     private func endpointKey<E: Endpoint>(for _: E.Type) -> String {
+        String(describing: E.self)
+    }
+
+    private func downloadEndpointKey<E: DownloadEndpoint>(for _: E.Type) -> String {
         String(describing: E.self)
     }
 }
